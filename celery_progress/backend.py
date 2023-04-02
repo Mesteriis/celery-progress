@@ -23,7 +23,7 @@ class AbstractProgressRecorder(object):
 class ConsoleProgressRecorder(AbstractProgressRecorder):
 
     def set_progress(self, current, total, description=""):
-        print('processed {} items of {}. {}'.format(current, total, description))
+        print(f'processed {current} items of {total}. {description}')
 
 
 class ProgressRecorder(AbstractProgressRecorder):
@@ -68,59 +68,63 @@ class Progress(object):
         if state in ['SUCCESS', 'FAILURE']:
             success = self.result.successful()
             with allow_join_result():
-                response.update({
+                response |= {
                     'complete': True,
                     'success': success,
                     'progress': _get_completed_progress(),
-                    'result': self.result.get(self.result.id) if success else str(info),
-                })
+                    'result': self.result.get(self.result.id)
+                    if success
+                    else str(info),
+                }
         elif state in ['RETRY', 'REVOKED']:
             if state == 'RETRY':
                 # in a retry sceneario, result is the exception, and 'traceback' has the details
                 # https://docs.celeryq.dev/en/stable/userguide/tasks.html#retry
                 traceback = task_meta.get("traceback")
-                seconds_re = re.search("Retry in \d{1,10}s", traceback)
-                if seconds_re:
+                if seconds_re := re.search("Retry in \d{1,10}s", traceback):
                     next_retry_seconds = int(seconds_re.group()[9:-1])
                 else:
                     next_retry_seconds = "Unknown"
 
-                result = {"next_retry_seconds": next_retry_seconds, "message": f"{str(task_meta['result'])[0:50]}..."}
+                result = {
+                    "next_retry_seconds": next_retry_seconds,
+                    "message": f"{str(task_meta['result'])[:50]}...",
+                }
             else:
-                result = 'Task ' + str(info)
-            response.update({
+                result = f'Task {str(info)}'
+            response |= {
                 'complete': True,
                 'success': False,
                 'progress': _get_completed_progress(),
                 'result': result,
-            })
+            }
         elif state == 'IGNORED':
-            response.update({
+            response |= {
                 'complete': True,
                 'success': None,
                 'progress': _get_completed_progress(),
-                'result': str(info)
-            })
+                'result': str(info),
+            }
         elif state == PROGRESS_STATE:
-            response.update({
+            response |= {
                 'complete': False,
                 'success': None,
                 'progress': info,
-            })
+            }
         elif state in ['PENDING', 'STARTED']:
-            response.update({
+            response |= {
                 'complete': False,
                 'success': None,
                 'progress': _get_unknown_progress(state),
-            })
+            }
         else:
             logger.error('Task %s has unknown state %s with metadata %s', self.result.id, state, info)
-            response.update({
+            response |= {
                 'complete': True,
                 'success': False,
                 'progress': _get_unknown_progress(state),
-                'result': 'Unknown state {}'.format(state),
-            })
+                'result': f'Unknown state {state}',
+            }
         return response
 
 
